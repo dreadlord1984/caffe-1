@@ -39,6 +39,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <google/protobuf/text_format.h>
 
+#include <boost/algorithm/string/replace.hpp>
+
 #include <map>
 #include <string>
 
@@ -46,6 +48,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "caffe/proto/caffe.pb.h"
 #include "caffe/util/io.hpp"
 #include "caffe/util/upgrade_proto.hpp"
+
+#ifdef USE_MLSL
+#include "caffe/multinode/mlsl.hpp"
+#endif /* USE_MLSL */
 
 namespace caffe {
 
@@ -115,6 +121,9 @@ void ReadNetParamsFromTextFileOrDie(const string& param_file,
                                     NetParameter* param) {
   CHECK(ReadProtoFromTextFile(param_file, param))
       << "Failed to parse NetParameter file: " << param_file;
+#ifdef USE_MLSL
+  ReplaceMultinodeNetParams(param);
+#endif
   UpgradeNetAsNeeded(param_file, param);
 }
 
@@ -304,7 +313,7 @@ bool UpgradeV0LayerParameter(const V1LayerParameter& v0_layer_connection,
       if (type == "conv") {
         layer_param->mutable_convolution_param()->add_pad(v0_layer_param.pad());
       } else if (type == "pool") {
-        layer_param->mutable_pooling_param()->set_pad(v0_layer_param.pad());
+        layer_param->mutable_pooling_param()->add_pad(v0_layer_param.pad());
       } else {
         LOG(ERROR) << "Unknown parameter pad for layer type " << type;
         is_fully_compatible = false;
@@ -315,7 +324,7 @@ bool UpgradeV0LayerParameter(const V1LayerParameter& v0_layer_connection,
         layer_param->mutable_convolution_param()->add_kernel_size(
             v0_layer_param.kernelsize());
       } else if (type == "pool") {
-        layer_param->mutable_pooling_param()->set_kernel_size(
+        layer_param->mutable_pooling_param()->add_kernel_size(
             v0_layer_param.kernelsize());
       } else {
         LOG(ERROR) << "Unknown parameter kernelsize for layer type " << type;
@@ -336,7 +345,7 @@ bool UpgradeV0LayerParameter(const V1LayerParameter& v0_layer_connection,
         layer_param->mutable_convolution_param()->add_stride(
             v0_layer_param.stride());
       } else if (type == "pool") {
-        layer_param->mutable_pooling_param()->set_stride(
+        layer_param->mutable_pooling_param()->add_stride(
             v0_layer_param.stride());
       } else {
         LOG(ERROR) << "Unknown parameter stride for layer type " << type;
@@ -1101,5 +1110,55 @@ void ReadSolverParamsFromTextFileOrDie(const string& param_file,
       << "Failed to parse SolverParameter file: " << param_file;
   UpgradeSolverAsNeeded(param_file, param);
 }
+
+#ifdef USE_MLSL
+static std::string getNodeId() {
+  return std::to_string(mn::get_node_id());
+}
+
+static std::string getNumNodes() {
+  return std::to_string(mn::get_nodes_count());
+}
+
+void ReplaceMultinodeSolverParams(SolverParameter* param) {
+  std::string node_id = getNodeId();
+  std::string num_nodes = getNumNodes();
+
+  if (param->has_train_net()) {
+    std::string* train_net = param->mutable_train_net();
+    if (train_net) {
+        boost::replace_all(*train_net, "%#", node_id);
+        boost::replace_all(*train_net, "%*", num_nodes);
+    }
+  }
+
+  if (param->has_snapshot_prefix()) {
+    std::string* prefix = param->mutable_snapshot_prefix();
+    if (prefix) {
+        boost::replace_all(*prefix, "%#", node_id);
+        boost::replace_all(*prefix, "%*", num_nodes);
+    }
+  }
+}
+
+void ReplaceMultinodeNetParams(NetParameter* param) {
+  for (int i = 0; i < param->layer_size(); ++i) {
+    std::string* source = nullptr;
+
+    if (param->layer(i).has_data_param()) {
+      source = param->mutable_layer(i)->mutable_data_param()->
+              mutable_source();
+    } else if (param->layer(i).has_image_data_param()) {
+      source = param->mutable_layer(i)->mutable_image_data_param()->
+              mutable_source();
+    }
+
+    if (source) {
+        boost::replace_all(*source, "%#", getNodeId());
+        boost::replace_all(*source, "%*", getNumNodes());
+    }
+  }
+}
+#endif
 
 }  // namespace caffe

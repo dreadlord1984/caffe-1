@@ -30,7 +30,7 @@ caffe_option(CPU_ONLY  "Build Caffe without CUDA support" OFF) # TODO: rename to
 caffe_option(USE_OPENMP "Build Caffe with OpenMP support" ON )
 caffe_option(USE_CUDNN "Build Caffe with cuDNN library support" ON IF NOT CPU_ONLY)
 caffe_option(USE_MKL2017_AS_DEFAULT_ENGINE "Use MKL2017 primitives for supported layers" OFF)
-caffe_option(USE_MKLDNN_AS_DEFAULT_ENGINE "Use MKL-DNN primitives for supported layers" OFF)
+caffe_option(USE_MKLDNN_AS_DEFAULT_ENGINE "Use MKL-DNN primitives for supported layers" ON)
 caffe_option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 caffe_option(BUILD_python "Build Python wrapper" ON)
 set(python_version "2" CACHE STRING "Specify which Python version to use")
@@ -42,6 +42,7 @@ caffe_option(USE_LEVELDB "Build with levelDB" ON)
 caffe_option(USE_LMDB "Build with lmdb" ON)
 caffe_option(ALLOW_LMDB_NOLOCK "Allow MDB_NOLOCK when reading LMDB files (only if necessary)" OFF)
 caffe_option(USE_SYSTEMTAP "Build for SystemTap" OFF)
+caffe_option(PERFORMANCE_MONITORING "Build Caffe with PERFORMANCE_MONITORING " OFF)
 #caffe_option(USE_GITHUB_MKLDNN "Download and use MKL-DNN available on github" OFF)
  
 # ---[ Dependencies
@@ -67,6 +68,8 @@ if(UNIX OR APPLE)
     # GCC specific flags.
     if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.9 OR CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL 4.9)
       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIE -fstack-protector-strong")
+      # auto enable SGD FUSION if gcc version >= 4.9
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DENABLE_SGD_FUSION")
     else()
       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIE -fstack-protector")
     endif()
@@ -78,6 +81,8 @@ if(UNIX OR APPLE)
     # though it uses -pie linker option that require -fPIE during compilation. Checksec
     # shows that it generates correct PIE anyway if only -pie is provided.
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector")
+    # Auto enable SGD Fusion if use intel compiler
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DENABLE_SGD_FUSION")
   endif()
   
   # Generic flags.

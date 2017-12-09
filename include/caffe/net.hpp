@@ -281,7 +281,6 @@ class Net {
   // TODO: Make it decent C++ anonymous function etc.
   static void CompilationRuleOne(const NetParameter& param,
                                  NetParameter* param_compiled);
-  
   /**
   * @brief This is rule that analyze layer if it is of type MKLDNNReLU and if that is the case
   *        and previous layer which serves as input layer to MKLDNNReLU Layer is MKLDNNConvolution
@@ -297,19 +296,39 @@ class Net {
   *        and is to perform in place computation 
   *        if positive then make it doing out-ofplace computation
   */
- static void CompilationRuleThree(const NetParameter& param,
+  static void CompilationRuleThree(const NetParameter& param,
                              NetParameter* param_compiled);
 
 
+  /**
+   * @brief If find "Conv--BN--Scale" in current network, merge BN and Scale layer into Convolution
+   * layers, this optimization only works in caffe TEST phase now.
+   */
 
-  static void GetBlobConsumers(std::vector<const LayerParameter*> &consumer_blobs,
+  static void GetBlobConsumers(std::vector<const LayerParameter*> &cnsmer_blobs,
                                                 const string& blob_name_to_find,
                                                 const NetParameter& param,
                                                 int layer_id);
 
+  static void GetNeedToCancelInplaceLayers(
+      vector<vector<const LayerParameter*>>& layer_pairs,    
+      std::map<string, int>& specified_layer_blob_name_to_index,      
+      std::map<string, int>& inplace_blob_name_to_index,
+      vector<string>& each_blob_list,
+      const NetParameter& param);
+
+  static void ParseNetInplaceStatus(
+      std::map<string, int>& inplace_blob_name_to_index,
+      std::map<string, int>& specified_layer_blob_name_to_index,      
+      vector<vector<string>>& specified_layer_input_blob_names,
+      NetParameter* param, const string& specified_layer_type);
+
   /// @brief return whether NetState state meets NetStateRule rule
   static bool StateMeetsRule(const NetState& state, const NetStateRule& rule,
       const string& layer_name);
+  inline const map<string,int>& blob_names_index() const {
+    return blob_names_index_;
+  }
 
  protected:
   // Helpers for Init.
@@ -331,9 +350,13 @@ class Net {
   void BackwardDebugInfo(const int layer_id);
   /// @brief Helper for displaying debug info in Update.
   void UpdateDebugInfo(const int param_id);
-
+  bool bn_scale_remove_;
+  bool bn_scale_merge_;
+  vector<string> kept_bn_layers_;
   /// @brief The network name
   string name_;
+  /// @brief The engine name
+  string engine_name_;
   /// @brief The phase: TRAIN or TEST
   Phase phase_;
   /// @brief Individual layers in the net
